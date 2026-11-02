@@ -5091,7 +5091,7 @@ var lastF = 0;
 				ui();
 				refreshWeatherNow();
 			}).catch(function (e) {
-				LOC.msg = e && e.message === "format" ? "Zadej PSČ, např. 110 00 "Praha 1" (pro jiné státy s předvolbou, např. SK 04001)." : "PSČ se nepodařilo najít (nebo jsi offline).";
+				LOC.msg = e && e.message === "format" ? "Zadej PSČ, např. 110 00 Praha 1 (pro jiné státy s předvolbou, např. SK 04001)." : "PSČ se nepodařilo najít (nebo jsi offline).";
 				ui();
 			});
 		}
