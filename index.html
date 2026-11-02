@@ -418,6 +418,17 @@
 			color: #10200a;
 			border-color: var(--eye);
 		}
+		.locrow { display: flex; gap: 6px; margin-bottom: 8px; }
+		.locrow[hidden] { display: none; }
+		.locrow input {
+			flex: 1 1 auto; min-width: 0;
+			border: 2px solid var(--line); background: #0c0830; color: var(--ink);
+			border-radius: 8px; padding: 9px 10px; font: inherit; font-size: 14px;
+		}
+		.locrow button {
+			flex: none; border: 2px solid var(--eye); background: var(--eye); color: #10200a;
+			border-radius: 8px; padding: 9px 14px; font-weight: 700; font-size: 13px;
+		}
 		.age {
 			font-variant-numeric: tabular-nums;
 			color: var(--ink);
@@ -627,6 +638,16 @@
 			<p class="note">Uhlík je s tebou: <span class="age" id="age">0 d 0 h</span> herního času</p>
 			<p class="note">Venku teď: <span class="age" id="realClock">—</span></p>
 			<p class="note">Počasí: <span class="age" id="weatherLbl">načítám…</span></p>
+			<p class="note">Poloha počasí: <span class="age" id="locLbl">—</span></p>
+			<div class="seg" id="segLoc">
+				<button type="button" data-m="gps" aria-pressed="false">Podle polohy</button>
+				<button type="button" data-m="psc" aria-pressed="true">Podle PSČ</button>
+			</div>
+			<div class="locrow" id="pscRow">
+				<input id="pscIn" type="text" inputmode="numeric" autocomplete="postal-code" maxlength="12" placeholder="PSČ, např. 751 01" aria-label="PSČ" />
+				<button type="button" id="pscGo">Použít</button>
+			</div>
+			<p class="note" id="locMsg"></p>
 			<p class="note">Krajina za oknem: <span class="age" id="seasonLbl">—</span></p>
 			<div class="seg" id="segSeason">
 				<button type="button" data-s="auto" aria-pressed="true">Auto</button>
@@ -908,6 +929,77 @@
 				}));
 			} catch (e) {}
 		}
+		/* ===== poloha pro počasí: podle zařízení, nebo podle zadaného PSČ ===== */
+		var KEY_LOC = "uhlik-loc-v1";
+		var LOC = { mode: "psc", psc: "751 01", lat: 49.4308, lon: 17.2880, name: "Tovačov", gps: null, msg: "" };
+		try {
+			var _l = JSON.parse(localStorage.getItem(KEY_LOC) || "null");
+			if (_l && typeof _l === "object") Object.assign(LOC, _l);
+		} catch (e) {}
+		function saveLoc() {
+			try { localStorage.setItem(KEY_LOC, JSON.stringify({ mode: LOC.mode, psc: LOC.psc, lat: LOC.lat, lon: LOC.lon, name: LOC.name, gps: LOC.gps })); } catch (e) {}
+		}
+		function locText() {
+			if (LOC.mode === "gps") {
+				var g = LOC.gps;
+				return g ? "aktuální poloha (" + g.lat.toFixed(2) + ", " + g.lon.toFixed(2) + ")" : "aktuální poloha (zjišťuji…)";
+			}
+			return (LOC.name || "?") + " (PSČ " + LOC.psc + ")";
+		}
+		function geocodePsc(raw) {
+			var m = String(raw || "").trim().match(/^([A-Za-z]{2})?\s*([0-9][0-9 \-]{2,8}[0-9])$/);
+			if (!m) return Promise.reject(new Error("format"));
+			var cc = (m[1] || "cz").toLowerCase(), code = m[2].replace(/[\s\-]+/g, "");
+			var spaced = cc === "cz" || cc === "sk" ? code.slice(0, 3) + " " + code.slice(3) : code;
+			function nom() {
+				return fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=" + cc + "&postalcode=" + encodeURIComponent(spaced))
+					.then(function (r) { return r.json(); }).then(function (a) {
+						if (!a || !a.length) throw new Error("none");
+						return { lat: +a[0].lat, lon: +a[0].lon, name: (a[0].display_name || "").split(",").slice(0, 2).join(",").replace(/^\s*[0-9 ]+,\s*/, "").trim() };
+					});
+			}
+			function zip() {
+				return fetch("https://api.zippopotam.us/" + cc + "/" + encodeURIComponent(spaced))
+					.then(function (r) { if (!r.ok) throw new Error("none"); return r.json(); }).then(function (d) {
+						var p = d.places && d.places[0];
+						if (!p) throw new Error("none");
+						return { lat: +p.latitude, lon: +p.longitude, name: p["place name"] };
+					});
+			}
+			function om() {
+				return fetch("https://geocoding-api.open-meteo.com/v1/search?count=5&language=cs&format=json&name=" + encodeURIComponent(spaced))
+					.then(function (r) { return r.json(); }).then(function (d) {
+						var a = (d.results || []).filter(function (x) { return (x.country_code || "").toLowerCase() === cc; });
+						if (!a.length) throw new Error("none");
+						return { lat: a[0].latitude, lon: a[0].longitude, name: a[0].name };
+					});
+			}
+			return nom().catch(zip).catch(om).then(function (p) {
+				if (!isFinite(p.lat) || !isFinite(p.lon)) throw new Error("none");
+				p.psc = m[1] ? m[1].toUpperCase() + " " + spaced : spaced;
+				return p;
+			});
+		}
+		function resolveCoords(cb) {
+			if (LOC.mode === "gps" && navigator.geolocation) {
+				if (LOC.gps && Date.now() - LOC.gps.ts < 30 * 60 * 1000) { cb(LOC.gps); return; }
+				navigator.geolocation.getCurrentPosition(function (p) {
+					LOC.gps = { lat: +p.coords.latitude.toFixed(3), lon: +p.coords.longitude.toFixed(3), ts: Date.now() };
+					LOC.msg = "";
+					saveLoc();
+					cb(LOC.gps);
+					if (typeof ui === "function") ui();
+				}, function () {
+					LOC.msg = "Polohu se nepodařilo zjistit – používám " + (LOC.gps ? "poslední známou." : "PSČ " + LOC.psc + ".");
+					cb(LOC.gps || LOC);
+					if (typeof ui === "function") ui();
+				}, { maximumAge: 600000, timeout: 8000 });
+				return;
+			}
+			if (LOC.mode === "gps") LOC.msg = "Zařízení nepodporuje zjištění polohy – používám PSČ " + LOC.psc + ".";
+			cb(LOC);
+		}
+		function refreshWeatherNow() { weather.lastFetch = 0; fetchWeather(); }
 		function fetchWeather() {
 			var now = Date.now();
 			/* máme čerstvá data v paměti */
@@ -930,8 +1022,9 @@
 				return;
 			}
 			weather.lastFetch = now;
-			/* Open-Meteo – Tovačov (PSČ 751 01), bez API klíče */
-			var url = "https://api.open-meteo.com/v1/forecast?latitude=49.4308&longitude=17.2880&current=weather_code,temperature_2m&timezone=auto";
+			/* Open-Meteo, bez API klíče; poloha podle zařízení nebo PSČ */
+			resolveCoords(function (c) {
+			var url = "https://api.open-meteo.com/v1/forecast?latitude=" + c.lat + "&longitude=" + c.lon + "&current=weather_code,temperature_2m&timezone=auto";
 			fetch(url).then(function (r) { return r.json(); }).then(function (data) {
 				if (!data || !data.current) throw new Error("no data");
 				var code = data.current.weather_code | 0;
@@ -958,6 +1051,7 @@
 					var el = document.getElementById("weatherLbl");
 					if (el) el.textContent = weather.label;
 				}
+			});
 			});
 		}
 		/* částice počasí (déšť / sníh) – jen v okně */
@@ -1496,6 +1590,13 @@
 			$$("#segSpeed button").forEach(function (b) {
 				b.setAttribute("aria-pressed", +b.getAttribute("data-v") === S.speed ? "true" : "false");
 			});
+			$$("#segLoc button").forEach(function (b) {
+				b.setAttribute("aria-pressed", b.getAttribute("data-m") === LOC.mode ? "true" : "false");
+			});
+			if ($("#locLbl")) $("#locLbl").textContent = locText();
+			if ($("#pscRow")) $("#pscRow").hidden = LOC.mode !== "psc";
+			if ($("#pscIn") && document.activeElement !== $("#pscIn")) $("#pscIn").value = LOC.psc;
+			if ($("#locMsg")) $("#locMsg").textContent = LOC.msg || "";
 			var SEAS_CZ = { spring: "jaro", summer: "léto", autumn: "podzim", winter: "zima" };
 			$$("#segSeason button").forEach(function (b) {
 				b.setAttribute("aria-pressed", b.getAttribute("data-s") === (S.season || "auto") ? "true" : "false");
@@ -4969,6 +5070,33 @@ var lastF = 0;
 		$("#settings").addEventListener("click", function (e) {
 			if (e.target === $("#settings")) $("#settings").classList.remove("on");
 		});
+		$$("#segLoc button").forEach(function (b) {
+			b.addEventListener("click", function () {
+				LOC.mode = b.getAttribute("data-m");
+				LOC.msg = "";
+				if (LOC.mode === "gps") LOC.gps = null;
+				saveLoc();
+				ui();
+				refreshWeatherNow();
+			});
+		});
+		function applyPsc() {
+			var v = $("#pscIn").value;
+			LOC.msg = "Hledám PSČ…";
+			ui();
+			geocodePsc(v).then(function (p) {
+				LOC.mode = "psc"; LOC.psc = p.psc; LOC.lat = p.lat; LOC.lon = p.lon; LOC.name = p.name || p.psc;
+				LOC.msg = "Nastaveno: " + LOC.name + ".";
+				saveLoc();
+				ui();
+				refreshWeatherNow();
+			}).catch(function (e) {
+				LOC.msg = e && e.message === "format" ? "Zadej PSČ, např. 110 00 "Praha 1" (pro jiné státy s předvolbou, např. SK 04001)." : "PSČ se nepodařilo najít (nebo jsi offline).";
+				ui();
+			});
+		}
+		$("#pscGo").addEventListener("click", applyPsc);
+		$("#pscIn").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); applyPsc(); } });
 		$$("#segSeason button").forEach(function (b) {
 			b.addEventListener("click", function () {
 				S.season = b.getAttribute("data-s");
