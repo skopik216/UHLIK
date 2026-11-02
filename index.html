@@ -58,6 +58,20 @@
 			position: relative;
 		}
 
+		/* na počítači / tabletu: pevný rám velikosti iPhonu 16 (393 × 759 px po odečtení bezpečných oblastí), vycentrovaný */
+		@media (min-width: 520px) {
+			html, body { background: #0b0820; }
+			.app {
+				width: 393px;
+				max-width: 393px;
+				height: min(100dvh, 759px);
+				margin: max(0px, calc((100dvh - 759px) / 2)) auto;
+				border-radius: 22px;
+				overflow: hidden;
+				box-shadow: 0 0 0 2px #2a2470, 0 14px 50px rgba(0, 0, 0, 0.55);
+			}
+		}
+
 		/* horní lišta */
 		.a-head {
 			display: flex;
