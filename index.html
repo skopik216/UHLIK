@@ -3147,6 +3147,7 @@
 		}
 
 		/* plátno se přizpůsobí poměru stran okna, aby pokojíček vyplnil celou plochu */
+		var ROOM_H = 210;
 		var RH = 190, OYT = 0, fitW = 0, fitH = 0;
 		var roomWrap = document.querySelector(".room-wrap");
 		function floorBottom() { return RH - OYT - 2; }
@@ -3155,7 +3156,10 @@
 			if (!w || !h || (w === fitW && h === fitH)) return;
 			fitW = w;
 			fitH = h;
-			var H = Math.max(190, Math.min(320, Math.round((160 * h) / w)));
+			/* Pevné rozlišení pokoje navržené pro iPhone 16 (poměr stran ≈ 160 : 210).
+			   Na jiných zařízeních se pokoj jen zvětší / zmenší se zachováním poměru a okraje se vyplní pozadím,
+			   takže se stěny ani podlaha nenatahují. */
+			var H = ROOM_H;
 			if (H !== rc.height) {
 				rc.height = H;
 				rx.imageSmoothingEnabled = false;
@@ -4849,9 +4853,12 @@ var lastF = 0;
 
 		function toLogical(e) {
 			var r = rc.getBoundingClientRect();
+			/* plátno je v prvku vycentrované se zachováním poměru stran (object-fit: contain) */
+			var s = Math.min(r.width / 160, r.height / RH), cw = 160 * s, ch = RH * s;
+			var l = r.left + (r.width - cw) / 2, tp = r.top + (r.height - ch) / 2;
 			return {
-				x: ((e.clientX - r.left) / r.width) * 160,
-				y: ((e.clientY - r.top) / r.height) * RH - OYT
+				x: ((e.clientX - l) / cw) * 160,
+				y: ((e.clientY - tp) / ch) * RH - OYT
 			};
 		}
 		rc.addEventListener("pointerdown", function (e) {
@@ -5074,4 +5081,3 @@ var lastF = 0;
 	</script>
 </body>
 </html>
-
