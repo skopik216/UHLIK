@@ -2,7 +2,7 @@
 
 ### Můj kočičí parťák
 Malá pixelová kočička, o kterou se staráš přímo v prohlížeči.  
-Krmíš ji, hladíš, hraješ si s ní, zařizuješ pokojíček a díváš se, jak za oknem mění den a počasí.
+Krmíš ji, hladíš, hraješ si s ní, zařizuješ pokojíček a díváš se, jak se za oknem mění den a počasí.
 
 
 <p align="left">
