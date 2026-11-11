@@ -8794,7 +8794,9 @@
 			$("#hud").classList.remove("on");
 			$("#hud").hidden = true;
 			$("#playBtn").setAttribute("aria-pressed", "false");
-			S = Object.assign({}, DEF, { speed: sp, last: Date.now() });
+			/* S se přepisuje na místě: NeedsSystem a GameState drží odkaz na tentýž objekt (nové přiřazení by je nechalo na starém stavu) */
+			Object.keys(S).forEach(function (k) { delete S[k]; });
+			Object.assign(S, DEF, { speed: sp, last: Date.now() });
 			notified = { hunger: false, fun: false, health: false, rest: false, litter: false };
 			cat.x = 80; cat.y = 158; cat.tx = 80; cat.ty = 158; CAM.x = 0; CAM.goal = null; CAM.fol = false;
 			cat.eat = 0; cat.pendingEat = false; cat.eatCooldown = 0;
